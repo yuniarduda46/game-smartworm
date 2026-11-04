@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>SmartWorm - SMP Negeri Satap Luwoo</title>
+<style>
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  body{margin:0; font-family:Arial, sans-serif; background:#15803d; color:white; text-align:center; overflow-x:hidden; touch-action:manipulation;}
+  h1{margin:10px 0 2px; font-size:22px;}
+  p{margin:4px 10px; font-size:14px;}
+  #wrap{max-width:640px; margin:0 auto; padding:10px;}
+  #scoreBar{display:flex; justify-content:space-between; background:#14532d; padding:10px 14px; border-radius:12px; font-weight:bold; margin:10px 0;}
+  #question{background:white; color:#14532d; padding:12px; border-radius:12px; font-weight:bold; font-size:18px; min-height:52px;}
+  #gameBox{position:relative; background:#166534; border:4px solid white; border-radius:12px; overflow:hidden; margin-top:10px;}
+  canvas{display:block; width:100%; height:auto; background:
+    repeating-linear-gradient(90deg,#15803d 0 60px,#166534 60px 120px);
+    touch-action:none;}
+  /* Overlay untuk ambil fokus di Google Sites */
+  #overlay{position:absolute; inset:0; background:rgba(0,0,0,0.65); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; z-index:10; cursor:pointer;}
+  #overlay button{background:#facc15; color:#14532d; border:none; padding:16px 28px; font-size:20px; font-weight:bold; border-radius:50px; cursor:pointer;}
+  /* D-PAD untuk HP & IFP */
+  #controls{display:grid; grid-template-columns:70px 70px 70px; gap:8px; justify-content:center; margin:16px auto 6px;}
+  .btn{width:70px; height:70px; font-size:28px; border-radius:16px; border:3px solid white; background:#facc15; color:#14532d; font-weight:bold; cursor:pointer; touch-action:none; user-select:none;}
+  .btn:active{background:white; transform:scale(0.95);}
+  .empty{visibility:hidden;}
+  #startBtn{background:#22c55e; color:white; width:220px; height:54px; font-size:18px; border-radius:12px; border:none; font-weight:bold; cursor:pointer; margin-top:8px;}
+  #msg{font-weight:bold; min-height:22px; margin-top:8px;}
+  @media(min-width:768px){ .btn{width:84px; height:84px; font-size:32px;} #controls{grid-template-columns:84px 84px 84px;} }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <h1>🐛 SmartWorm - Past Tense</h1>
+  <p>SMP Negeri Satap Luwoo | Makan jawaban yang BENAR!</p>
+  <div id="scoreBar"><span>Skor: <span id="score">0</span></span><span>Nyawa: <span id="lives">❤️❤️❤️</span></span></div>
+  <div id="question">Tekan MULAI untuk bermain</div>
+  <div id="gameBox">
+    <canvas id="cv" width="600" height="400"></canvas>
+    <div id="overlay">
+      <div style="font-size:40px">🐛</div>
+      <div style="font-size:18px; font-weight:bold; padding:0 20px;">Klik / Sentuh untuk MAIN<br><span style="font-size:13px; font-weight:normal;">Wajib diklik dulu supaya keyboard & sentuhan berfungsi di Google Sites</span></div>
+      <button id="playBtn">▶ MULAI MAIN</button>
+    </div>
+  </div>
+  <div id="msg"></div>
+
+  <!-- Kontrol HP / IFP / Laptop (Mouse) -->
+  <div id="controls">
+    <div class="empty"></div>
+    <button class="btn" data-dir="up">⬆️</button>
+    <div class="empty"></div>
+    <button class="btn" data-dir="left">⬅️</button>
+    <button class="btn" data-dir="down">⬇️</button>
+    <button class="btn" data-dir="right">➡️</button>
+  </div>
+  <button id="startBtn">🔄 ULANGI GAME</button>
+  <p style="font-size:12px; opacity:0.9;">Laptop: Panah / WASD &nbsp;|&nbsp; HP/IFP: Tombol di atas / Geser (Swipe) di lapangan</p>
+</div>
+
+<script>
+const cv=document.getElementById('cv'), ctx=cv.getContext('2d');
+const scoreEl=document.getElementById('score'), livesEl=document.getElementById('lives');
+const qEl=document.getElementById('question'), msgEl=document.getElementById('msg');
+const overlay=document.getElementById('overlay');
+
+let worm, dir, nextDir, foods, score, lives, running, timer, currentQ;
+
+const SOAL=[
+  {q:"Last Friday, I ___ football.", a:"played", b:"play"},
+  {q:"She ___ to school yesterday.", a:"went", b:"go"},
+  {q:"They ___ a song last night.", a:"sang", b:"sing"},
+  {q:"He ___ a book yesterday.", a:"read", b:"reads"},
+  {q:"We ___ dinner at 7 PM.", a:"ate", b:"eat"},
+];
+
+function newFoods(){
+  currentQ = SOAL[Math.floor(Math.random()*SOAL.length)];
+  qEl.textContent = currentQ.q;
+  // 2 makanan: 1 benar, 1 salah, posisi acak
+  const pos=[{x:3,y:3},{x:25,y:15},{x:15,y:8},{x:22,y:5}];
+  const p1=pos[Math.floor(Math.random()*pos.length)];
+  let p2=pos[Math.floor(Math.random()*pos.length)];
+  if(p1.x===p2.x) p2={x:10,y:14};
+  const benarDuluan = Math.random()>0.5;
+  foods=[
+    {x:p1.x,y:p1.y,text:benarDuluan?currentQ.a:currentQ.b, benar:benarDuluan},
+    {x:p2.x,y:p2.y,text:benarDuluan?currentQ.b:currentQ.a, benar:!benarDuluan}
+  ];
+}
+
+function reset(){
+  worm=[{x:15,y:10},{x:14,y:10},{x:13,y:10}];
+  dir={x:1,y:0}; nextDir={x:1,y:0};
+  score=0; lives=3; running=true;
+  scoreEl.textContent=score; livesEl.textContent="❤️❤️❤️";
+  msgEl.textContent="";
+  newFoods(); draw();
+}
+
+function setDir(x,y){
+  // cegah balik badan langsung
+  if(dir.x===-x && dir.y===-y) return;
+  nextDir={x,y};
+}
+
+function step(){
+  if(!running) return;
+  dir=nextDir;
+  const head={x:worm[0].x+dir.x, y:worm[0].y+dir.y};
+  // nabrak dinding
+  if(head.x<0||head.x>=30||head.y<0||head.y>=20){
+    lives--; livesEl.textContent="❤️".repeat(Math.max(0,lives));
+    if(lives<=0){ gameOver(); return; }
+    msgEl.textContent="⚠️ Nabrak! Hati-hati!";
+    worm=[{x:15,y:10},{x:14,y:10},{x:13,y:10}]; dir={x:1,y:0}; nextDir={x:1,y:0};
+    draw(); return;
+  }
+  worm.unshift(head);
+  // cek makan
+  let makan=false;
+  for(let f of foods){
+    if(head.x===f.x && head.y===f.y){
+      makan=true;
+      if(f.benar){ score+=10; scoreEl.textContent=score; msgEl.textContent="✅ Benar! +10 - "+f.text+" = Past Tense!"; }
+      else{ lives--; livesEl.textContent="❤️".repeat(Math.max(0,lives)); msgEl.textContent="❌ Salah! Itu bukan Verb 2. Nyawa berkurang!"; if(lives<=0){ gameOver(); return; } }
+      newFoods(); break;
+    }
+  }
+  if(!makan) worm.pop();
+  draw();
+}
+
+function gameOver(){
+  running=false; clearInterval(timer);
+  msgEl.textContent="🏁 Game Selesai! Skor: "+score;
+  overlay.style.display="flex";
+  overlay.querySelector('div').innerHTML="Skor Akhir: "+score+"<br>Tekan MULAI lagi";
+  document.getElementById('playBtn').textContent="🔄 MAIN LAGI";
+}
+
+function draw(){
+  // lapangan
+  ctx.fillStyle="#15803d"; ctx.fillRect(0,0,600,400);
+  ctx.fillStyle="#166534"; for(let i=0;i<30;i+=2) ctx.fillRect(i*20,0,20,400);
+  ctx.strokeStyle="white"; ctx.lineWidth=2; ctx.strokeRect(5,5,590,390);
+  ctx.beginPath(); ctx.moveTo(300,5); ctx.lineTo(300,395); ctx.stroke();
+  ctx.beginPath(); ctx.arc(300,200,60,0,Math.PI*2); ctx.stroke();
+  // bendera pojok merah putih
+  ctx.fillStyle="red"; ctx.fillRect(8,8,14,8); ctx.fillStyle="white"; ctx.fillRect(8,16,14,8);
+  // makanan
+  ctx.font="bold 14px Arial"; ctx.textAlign="center";
+  for(let f of foods){
+    ctx.fillStyle=f.benar?"#facc15":"#f87171";
+    ctx.beginPath(); ctx.arc(f.x*20+10,f.y*20+10,16,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle="#14532d"; ctx.fillText(f.text, f.x*20+10, f.y*20+14);
+  }
+  // cacing
+  worm.forEach((s,i)=>{
+    ctx.fillStyle=i===0?"#22c55e":"#4ade80";
+    ctx.beginPath(); ctx.arc(s.x*20+10,s.y*20+10,9,0,Math.PI*2); ctx.fill();
+    if(i===0){ ctx.fillStyle="white"; ctx.beginPath(); ctx.arc(s.x*20+13,s.y*20+7,3,0,Math.PI*2); ctx.fill(); ctx.fillStyle="black"; ctx.beginPath(); ctx.arc(s.x*20+14,s.y*20+7,1.5,0,Math.PI*2); ctx.fill(); }
+  });
+}
+
+// === 1. KEYBOARD LAPTOP - WAJIB preventDefault supaya tidak scroll ===
+window.addEventListener('keydown', e=>{
+  const k=e.key.toLowerCase();
+  if(["arrowup","arrowdown","arrowleft","arrowright"," "].includes(k)) e.preventDefault();
+  if(k==="arrowup"||k==="w") setDir(0,-1);
+  if(k==="arrowdown"||k==="s") setDir(0,1);
+  if(k==="arrowleft"||k==="a") setDir(-1,0);
+  if(k==="arrowright"||k==="d") setDir(1,0);
+}, {passive:false});
+
+// === 2. TOMBOL LAYAR HP / IFP / MOUSE ===
+document.querySelectorAll('.btn').forEach(b=>{
+  const go=(e)=>{ e.preventDefault(); const d=b.dataset.dir;
+    if(d==="up") setDir(0,-1); if(d==="down") setDir(0,1);
+    if(d==="left") setDir(-1,0); if(d==="right") setDir(1,0);
+    cv.focus();
+  };
+  b.addEventListener('pointerdown', go);
+  b.addEventListener('touchstart', go, {passive:false});
+  b.addEventListener('click', go);
+});
+
+// === 3. SWIPE DI LAPANGAN (HP & IFP) ===
+let sx=0, sy=0;
+cv.addEventListener('touchstart', e=>{ sx=e.touches[0].clientX; sy=e.touches[0].clientY; }, {passive:true});
+cv.addEventListener('touchmove', e=>{ e.preventDefault(); }, {passive:false});
+cv.addEventListener('touchend', e=>{
+  const dx=e.changedTouches[0].clientX-sx, dy=e.changedTouches[0].clientY-sy;
+  if(Math.abs(dx)<20 && Math.abs(dy)<20) return;
+  if(Math.abs(dx)>Math.abs(dy)) setDir(dx>0?1:-1,0); else setDir(0,dy>0?1:-1);
+}, {passive:true});
+
+// === 4. KLIK LAPANGAN UNTUK FOKUS (Google Sites iframe) ===
+cv.addEventListener('click', ()=>{ cv.focus(); overlay.style.display="none"; });
+cv.setAttribute('tabindex','0');
+
+function startGame(){
+  overlay.style.display="none";
+  reset(); clearInterval(timer); timer=setInterval(step,180);
+  cv.focus(); window.focus();
+}
+document.getElementById('playBtn').addEventListener('click', startGame);
+document.getElementById('startBtn').addEventListener('click', startGame);
+overlay.addEventListener('click', startGame);
+
+draw();
+</script>
+</body>
+</html>
